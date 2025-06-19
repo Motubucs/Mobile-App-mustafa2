@@ -156,6 +156,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     // Check if user is trying to message themselves
+    //dd
     if (user.uid == product.sellerId) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -281,7 +282,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ],
           ),
-          floatingActionButton: !isSelfPosted && productViewModel.product != null ? FloatingActionButton.extended(
+          floatingActionButton: !isSelfPosted ? FloatingActionButton.extended(
             onPressed: _startChatWithSeller,
             icon: const Icon(Icons.message),
             label: const Text('Message Seller'),
