@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/product.dart';
 import '../services/product_service.dart';
 import '../services/storage_service.dart';
@@ -109,18 +108,6 @@ class ListingViewModel extends ChangeNotifier {
         throw Exception('User not authenticated');
       }
 
-      // Ensure user document exists
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
-      if (!userDoc.exists) {
-        await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).set({
-          'uid': currentUser.uid,
-          'name': currentUser.displayName ?? 'Unknown',
-          'email': currentUser.email ?? '',
-          'avatar': currentUser.photoURL ?? 'assets/images/default_avatar.png',
-          'joinedDate': DateTime.now(),
-        });
-      }
-
       // Create product with the image URLs
       final newProduct = Product(
         id: '', // Will be set by Firestore
@@ -139,12 +126,10 @@ class ListingViewModel extends ChangeNotifier {
 
       // Save product to database
       final productId = await _productService.createProduct(newProduct);
-      if (productId != null) {
-        // Clear form data
-        _resetForm();
-        return true;
-      }
-      return false;
+      // Clear form data
+      _resetForm();
+      return true;
+          return false;
     } catch (e) {
       _error = 'Failed to create listing: ${e.toString()}';
       return false;
@@ -241,12 +226,10 @@ class ListingViewModel extends ChangeNotifier {
 
     try {
       final productId = await _productService.createProduct(product);
-      if (productId != null) {
-        // Add to local list
-        _myListings.add(product);
-        notifyListeners();
-      }
-      return productId;
+      // Add to local list
+      _myListings.add(product);
+      notifyListeners();
+          return productId;
     } catch (e) {
       _error = 'Failed to create product: ${e.toString()}';
       return null;

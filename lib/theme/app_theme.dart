@@ -76,11 +76,11 @@ class AppTheme {
           vertical: 16,
         ),
       ),
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        clipBehavior: Clip.antiAlias,
-      ),
+      // cardTheme: CardTheme(
+      //   elevation: 2,
+      //   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      //   clipBehavior: Clip.antiAlias,
+      // ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.accent.withOpacity(0.1),
         labelStyle: TextStyle(color: AppColors.primary),

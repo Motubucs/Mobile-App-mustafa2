@@ -166,7 +166,7 @@ class ProfileViewModel extends ChangeNotifier {
         'online': true,
         'isEmailVerified': _user!.isEmailVerified,
         'joinedDate': _user!.joinedDate,
-        'rating': _user!.rating,
+        'rating': _user!.rating.toString(),
         'reviewCount': _user!.reviewCount,
       };
 

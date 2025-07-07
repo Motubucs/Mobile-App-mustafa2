@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_colors.dart';
+import '../../viewmodels/product_viewmodel.dart';
 import '../../widgets/admin_product_card.dart';
 import '../../models/product.dart';
 
@@ -11,24 +13,28 @@ class AdminDashboardScreen extends StatefulWidget {
   _AdminDashboardScreenState createState() => _AdminDashboardScreenState();
 }
 
+class DashboardModel {
+  String? title;
+  int? value;
+
+  DashboardModel(this.title, this.value);
+}
+
 class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Stats data
-  Map<String, dynamic> _stats = {
-    'totalUsers': 0,
-    'activeListings': 0,
-    'reports': 0,
-    'transactions': 0,
-  };
+  List<DashboardModel> _stats = [
+    DashboardModel('totalUsers', 0),
+    DashboardModel('activeListings', 0),
+    DashboardModel('reports', 0),
+    DashboardModel('transactions', 0),
+  ];
 
   // Pending listings
   List<Product> _pendingListings = [];
-
-  // Reports
-  List<Map<String, dynamic>> _reports = [];
 
   // Banned users
   List<Map<String, dynamic>> _bannedUsers = [];
@@ -41,22 +47,31 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Future<void> _loadData() async {
-    await Future.wait([
-      _loadStats(),
-      _loadPendingListings(),
-      _loadReports(),
-      _loadBannedUsers(),
-    ]);
+    await Future.wait([_loadStats(), _loadPendingListings(), _loadBannedUsers()]);
   }
 
   Future<void> _loadStats() async {
     try {
-      final statsDoc = await _firestore.collection('admin').doc('stats').get();
-      if (statsDoc.exists) {
-        setState(() {
-          _stats = statsDoc.data()!;
-        });
-      }
+      // Load reports count
+      var rep = Provider.of<ProductViewModel>(context, listen: false).reportModel;
+      
+      // Load users count
+      final usersSnapshot = await _firestore.collection('users').get();
+      final usersCount = usersSnapshot.docs.length;
+      
+      // Load active listings count
+      final listingsSnapshot = await _firestore
+          .collection('products')
+          .where('active', isEqualTo: true)
+          .get();
+      final activeListingsCount = listingsSnapshot.docs.length;
+      
+      setState(() {
+        _stats[0] = DashboardModel('Total Users', usersCount);
+        _stats[1] = DashboardModel('Active Listings', activeListingsCount);
+        _stats[2] = DashboardModel('Reports', rep.length);
+        _stats[3] = DashboardModel('Transactions', 0); // Placeholder for now
+      });
     } catch (e) {
       print('Error loading stats: $e');
     }
@@ -65,57 +80,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Future<void> _loadPendingListings() async {
     try {
       final snapshot =
-          await _firestore
-              .collection('products')
-              .where('status', isEqualTo: 'pending')
-              .get();
+          await _firestore.collection('products').where('status', isEqualTo: 'pending').get();
 
       setState(() {
-        _pendingListings =
-            snapshot.docs
-                .map((doc) => Product.fromMap(doc.id, doc.data()))
-                .toList();
+        _pendingListings = snapshot.docs.map((doc) => Product.fromMap(doc.id, doc.data())).toList();
       });
     } catch (e) {
       print('Error loading pending listings: $e');
     }
   }
 
-  Future<void> _loadReports() async {
-    try {
-      final snapshot =
-          await _firestore
-              .collection('reports')
-              .orderBy('timestamp', descending: true)
-              .get();
-
-      setState(() {
-        _reports =
-            snapshot.docs.map((doc) {
-              final data = doc.data();
-              return {
-                'id': doc.id,
-                'type': data['type'],
-                'productId': data['productId'],
-                'productTitle': data['productTitle'],
-                'reportedBy': data['reportedBy'],
-                'date': data['timestamp'],
-                'status': data['status'],
-              };
-            }).toList();
-      });
-    } catch (e) {
-      print('Error loading reports: $e');
-    }
-  }
-
   Future<void> _loadBannedUsers() async {
     try {
       final snapshot =
-          await _firestore
-              .collection('users')
-              .where('status', isEqualTo: 'banned')
-              .get();
+          await _firestore.collection('users').where('status', isEqualTo: 'banned').get();
 
       setState(() {
         _bannedUsers =
@@ -140,35 +118,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
   void _handleApprovePost(String productId) async {
     try {
-      await _firestore.collection('products').doc(productId).update({
-        'status': 'active',
-      });
+      await _firestore.collection('products').doc(productId).update({'status': 'active'});
 
       setState(() {
         _pendingListings.removeWhere((product) => product.id == productId);
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Post approved successfully'),
-          duration: Duration(seconds: 2),
-        ),
+        const SnackBar(content: Text('Post approved successfully'), duration: Duration(seconds: 2)),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error approving post: $e'),
-          duration: const Duration(seconds: 2),
-        ),
+        SnackBar(content: Text('Error approving post: $e'), duration: const Duration(seconds: 2)),
       );
     }
   }
 
   void _handleTakeDownPost(String productId) async {
     try {
-      await _firestore.collection('products').doc(productId).update({
-        'status': 'removed',
-      });
+      await _firestore.collection('products').doc(productId).update({'status': 'removed'});
 
       setState(() {
         _pendingListings.removeWhere((product) => product.id == productId);
@@ -182,10 +150,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error taking down post: $e'),
-          duration: const Duration(seconds: 2),
-        ),
+        SnackBar(content: Text('Error taking down post: $e'), duration: const Duration(seconds: 2)),
       );
     }
   }
@@ -197,8 +162,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       await _firestore.collection('users').doc(product.sellerId).update({
         'status': 'banned',
         'banDate': FieldValue.serverTimestamp(),
-        'banReason':
-            'Violating marketplace policies with listing: ${product.title}',
+        'banReason': 'Violating marketplace policies with listing: ${product.title}',
       });
 
       setState(() {
@@ -215,10 +179,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error banning user: $e'),
-          duration: const Duration(seconds: 2),
-        ),
+        SnackBar(content: Text('Error banning user: $e'), duration: const Duration(seconds: 2)),
       );
     }
   }
@@ -273,20 +234,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             labelColor: AppColors.primary,
             unselectedLabelColor: Colors.grey[600],
             indicatorColor: AppColors.primary,
-            tabs: const [
-              Tab(text: 'Overview'),
-              Tab(text: 'Moderation'),
-              Tab(text: 'Users'),
-            ],
+            tabs: const [Tab(text: 'Overview'), Tab(text: 'Moderation'), Tab(text: 'Users')],
           ),
         ),
         body: TabBarView(
           controller: _tabController,
-          children: [
-            _buildOverviewTab(),
-            _buildModerationTab(),
-            _buildUsersTab(),
-          ],
+          children: [_buildOverviewTab(), _buildModerationTab(), _buildUsersTab()],
         ),
       ),
     );
@@ -301,9 +254,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         children: [
           // Welcome Card
           Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             color: AppColors.primary,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -314,11 +265,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     CircleAvatar(
                       radius: 26,
                       backgroundColor: Colors.white,
-                      child: Icon(
-                        Icons.admin_panel_settings,
-                        color: AppColors.primary,
-                        size: 32,
-                      ),
+                      child: Icon(Icons.admin_panel_settings, color: AppColors.primary, size: 32),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -337,10 +284,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           const SizedBox(height: 4),
                           Text(
                             'Last login: ${DateTime.now().toString().substring(0, 16)}',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                            ),
+                            style: const TextStyle(color: Colors.white70, fontSize: 14),
                           ),
                         ],
                       ),
@@ -354,9 +298,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
           Text(
             'Dashboard Overview',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
 
@@ -369,68 +311,84 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: constraints.maxWidth > 500 ? 4 : 2,
                   childAspectRatio: 1.5,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 8.0,
+                  mainAxisSpacing: 8.0,
                 ),
                 itemCount: _stats.length,
                 itemBuilder: (context, index) {
-                  final stat = _stats.values.toList()[index];
+                  final stat = _stats[index];
                   final isPositive = stat.toString().startsWith('+');
 
-                  return Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.bar_chart,
-                            size: 24,
-                            color: _getStatColor(index),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _stats.keys.toList()[index],
-                            style: Theme.of(context).textTheme.titleSmall,
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 2),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              stat.toString(),
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.bold),
+                  return GestureDetector(
+                    onTap: () async {
+                      switch (index) {
+                        case 0:
+                          Navigator.pushNamed(context, '/users-list');
+                          break;
+                        case 1:
+                          Navigator.pushNamed(context, '/listing-analytics');
+                          break;
+                        case 2:
+                          await Provider.of<ProductViewModel>(
+                            context,
+                            listen: false,
+                          ).loadAllReports();
+                          Navigator.pushNamed(context, '/all-report');
+                          break;
+                        case 3:
+                          break;
+                        default:
+                      }
+                    },
+                    child: Card(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.bar_chart, size: 24, color: _getStatColor(index)),
+                            const SizedBox(height: 4),
+                            Text(
+                              stat.title.toString(),
+                              style: Theme.of(context).textTheme.titleSmall,
+                              textAlign: TextAlign.center,
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isPositive
-                                    ? Icons.arrow_upward
-                                    : Icons.arrow_downward,
-                                size: 12,
-                                color: isPositive ? Colors.green : Colors.red,
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                stat.value.toString(),
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                               ),
-                              const SizedBox(width: 2),
-                              Text(
-                                isPositive ? '+' : '-',
-                                style: TextStyle(
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                         
+                              children: [
+                                Icon(
+                                  isPositive ? Icons.arrow_upward : Icons.arrow_downward,
+                                  size: 12,
                                   color: isPositive ? Colors.green : Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                                const SizedBox(width: 2),
+                                Text(
+                                  isPositive ? '+' : '-',
+                                  style: TextStyle(
+                                    color: isPositive ? Colors.green : Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -451,19 +409,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             color: Colors.orange[50],
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.warning_amber,
-                    color: Colors.orange[800],
-                    size: 32,
-                  ),
+                  Icon(Icons.warning_amber, color: Colors.orange[800], size: 32),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -495,10 +447,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Pending Listings',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text('Pending Listings', style: Theme.of(context).textTheme.titleLarge),
               TextButton.icon(
                 onPressed: () {},
                 icon: const Icon(Icons.refresh),
@@ -515,11 +464,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 48,
-                        color: Colors.grey[400],
-                      ),
+                      Icon(Icons.check_circle_outline, size: 48, color: Colors.grey[400]),
                       const SizedBox(height: 16),
                       Text(
                         'No pending posts',
@@ -562,10 +507,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           Text('Recent Reports', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
 
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+          /* Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -595,7 +538,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 );
               },
             ),
-          ),
+          ), */
         ],
       ),
     );
@@ -614,18 +557,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               decoration: InputDecoration(
                 hintText: 'Search users...',
                 prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
               ),
             ),
           ),
 
           // Tab Bar
-          const TabBar(
-            tabs: [Tab(text: 'Active Users'), Tab(text: 'Banned Users')],
-          ),
+          const TabBar(tabs: [Tab(text: 'Active Users'), Tab(text: 'Banned Users')]),
 
           // Tab Views
           Expanded(
@@ -640,10 +579,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'User Management',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
+                          Text('User Management', style: Theme.of(context).textTheme.titleLarge),
                           OutlinedButton.icon(
                             onPressed: () {},
                             icon: const Icon(Icons.filter_list),
@@ -655,47 +591,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
                       // User List
                       Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         child: ListView.separated(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _bannedUsers.length,
-                          separatorBuilder:
-                              (context, index) => const Divider(height: 1),
+                          separatorBuilder: (context, index) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final user = _bannedUsers[index];
                             return ListTile(
-                              leading: CircleAvatar(
-                                backgroundImage: NetworkImage(user['avatar']),
-                              ),
+                              leading: CircleAvatar(backgroundImage: NetworkImage(user['avatar'])),
                               title: Row(
                                 children: [
                                   Text(user['name']),
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: _getStatusColor(user['status']),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Text(
                                       user['status'],
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                      ),
+                                      style: const TextStyle(color: Colors.white, fontSize: 10),
                                     ),
                                   ),
                                 ],
                               ),
-                              subtitle: Text(
-                                '${user['email']} • Joined ${user['joinDate']}',
-                              ),
+                              subtitle: Text('${user['email']} • Joined ${user['joinDate']}'),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -712,10 +635,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                           '${user['reports']} reports',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color:
-                                                user['reports'] > 2
-                                                    ? Colors.red
-                                                    : Colors.orange,
+                                            color: user['reports'] > 2 ? Colors.red : Colors.orange,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
@@ -743,10 +663,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Banned Users',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
+                          Text('Banned Users', style: Theme.of(context).textTheme.titleLarge),
                           Badge(
                             label: Text(
                               _bannedUsers.length.toString(),
@@ -765,26 +682,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
                       // Banned User List
                       Card(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         child: ListView.separated(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _bannedUsers.length,
-                          separatorBuilder:
-                              (context, index) => const Divider(height: 1),
+                          separatorBuilder: (context, index) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final user = _bannedUsers[index];
                             return ListTile(
                               isThreeLine: true,
                               leading: Stack(
                                 children: [
-                                  CircleAvatar(
-                                    backgroundImage: NetworkImage(
-                                      user['avatar'],
-                                    ),
-                                  ),
+                                  CircleAvatar(backgroundImage: NetworkImage(user['avatar'])),
                                   Positioned(
                                     right: 0,
                                     bottom: 0,
@@ -793,16 +703,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                       decoration: BoxDecoration(
                                         color: Colors.red,
                                         shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: Colors.white,
-                                          width: 1,
-                                        ),
+                                        border: Border.all(color: Colors.white, width: 1),
                                       ),
-                                      child: const Icon(
-                                        Icons.block,
-                                        size: 10,
-                                        color: Colors.white,
-                                      ),
+                                      child: const Icon(Icons.block, size: 10, color: Colors.white),
                                     ),
                                   ),
                                 ],
@@ -811,9 +714,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '${user['email']} • Banned on ${user['banDate']}',
-                                  ),
+                                  Text('${user['email']} • Banned on ${user['banDate']}'),
                                   const SizedBox(height: 2),
                                   Text(
                                     'Reason: ${user['banReason']}',
@@ -838,22 +739,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                           ),
                                           actions: [
                                             TextButton(
-                                              onPressed:
-                                                  () => Navigator.pop(context),
+                                              onPressed: () => Navigator.pop(context),
                                               child: const Text('Cancel'),
                                             ),
                                             ElevatedButton(
                                               onPressed: () {
                                                 // Implement unban logic here
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
+                                                ScaffoldMessenger.of(context).showSnackBar(
                                                   SnackBar(
                                                     content: Text(
                                                       '${user['name']} has been unbanned',
                                                     ),
-                                                    backgroundColor:
-                                                        Colors.green,
+                                                    backgroundColor: Colors.green,
                                                   ),
                                                 );
                                                 Navigator.pop(context);
@@ -870,9 +767,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.green,
                                   side: const BorderSide(color: Colors.green),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
                                 ),
                                 child: const Text('Unban'),
                               ),
@@ -916,10 +811,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   else
                     const SizedBox.shrink(),
                   const SizedBox(height: 16),
-                  Text(
-                    product.title,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+                  Text(product.title, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 8),
                   Text(
                     'RM ${product.price.toStringAsFixed(2)}',
@@ -929,17 +821,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Description',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                  const Text('Description', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(product.description),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Seller Information',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                  const Text('Seller Information', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -959,18 +845,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                             product.seller?.name ?? 'Unknown',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          Text(
-                            'Member since ${product.seller?.joinedDate ?? 'unknown'}',
-                          ),
+                          Text('Member since ${product.seller?.joinedDate ?? 'unknown'}'),
                         ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Reason for Review',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                  const Text('Reason for Review', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.all(8),
@@ -1007,9 +888,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         _handleTakeDownPost(product.id);
                         Navigator.pop(context);
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                      ),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                       child: const Text('Take Down'),
                     ),
                   ),
@@ -1020,9 +899,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         _handleApprovePost(product.id);
                         Navigator.pop(context);
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                       child: const Text('Approve'),
                     ),
                   ),

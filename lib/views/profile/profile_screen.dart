@@ -1,5 +1,8 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../viewmodels/product_viewmodel.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodels/profile_viewmodel.dart';
@@ -152,10 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       // Reference the viewModel once before async operations
-      final profileViewModel = Provider.of<ProfileViewModel>(
-        currentContext,
-        listen: false,
-      );
+      final profileViewModel = Provider.of<ProfileViewModel>(currentContext, listen: false);
 
       // Perform sign out
       await profileViewModel.signOut();
@@ -190,11 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           appBar: AppBar(
             title: Row(
               children: [
-                Image.asset(
-                  'assets/images/LogoImage.png',
-                  width: 30,
-                  height: 30,
-                ),
+                Image.asset('assets/images/LogoImage.png', width: 30, height: 30),
                 const SizedBox(width: 8),
                 const Text('Profile'),
               ],
@@ -216,10 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : viewModel.user == null
                   ? const Center(child: Text('User not found'))
                   : SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                      vertical: 8.0,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -233,35 +226,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  ProfileScreen.buildAvatar(
-                                    viewModel.user!.avatar,
-                                  ),
+                                  ProfileScreen.buildAvatar(viewModel.user!.avatar),
                                   const SizedBox(width: 16),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
                                           viewModel.user!.name,
-                                          style:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.titleLarge,
+                                          style: Theme.of(context).textTheme.titleLarge,
                                         ),
                                         Text(
                                           viewModel.user!.email,
-                                          style:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodyMedium,
+                                          style: Theme.of(context).textTheme.bodyMedium,
                                         ),
 
                                         Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 4.0,
-                                          ),
+                                          padding: const EdgeInsets.only(top: 4.0),
                                           child: Row(
                                             children: [
                                               Icon(
@@ -270,9 +252,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                     : Icons
                                                         .warning, // Use Icons.warning as a placeholder
                                                 color:
-                                                    viewModel
-                                                            .user!
-                                                            .isEmailVerified
+                                                    viewModel.user!.isEmailVerified
                                                         ? Colors.green[800]
                                                         : Colors.yellow[800],
                                                 size: 16,
@@ -286,9 +266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                   context,
                                                 ).textTheme.bodySmall?.copyWith(
                                                   color:
-                                                      viewModel
-                                                              .user!
-                                                              .isEmailVerified
+                                                      viewModel.user!.isEmailVerified
                                                           ? Colors.green[800]
                                                           : Colors.yellow[800],
                                                 ),
@@ -300,34 +278,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         const SizedBox(height: 8),
                                         Text(
                                           'Member since: ${viewModel.user!.joinedDate}',
-                                          style:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall,
+                                          style: Theme.of(context).textTheme.bodySmall,
                                         ),
                                         const SizedBox(height: 4),
                                         Row(
                                           children: [
-                                            const Icon(
-                                              Icons.star,
-                                              color: Colors.amber,
-                                              size: 16,
-                                            ),
+                                            const Icon(Icons.star, color: Colors.amber, size: 16),
                                             const SizedBox(width: 4),
                                             Text(
                                               '${viewModel.user!.rating}',
-                                              style:
-                                                  Theme.of(
-                                                    context,
-                                                  ).textTheme.bodyMedium,
+                                              style: Theme.of(context).textTheme.bodyMedium,
                                             ),
                                             const SizedBox(width: 4),
                                             Text(
                                               '(${viewModel.user!.reviewCount} reviews)',
-                                              style:
-                                                  Theme.of(
-                                                    context,
-                                                  ).textTheme.bodySmall,
+                                              style: Theme.of(context).textTheme.bodySmall,
                                             ),
                                           ],
                                         ),
@@ -342,20 +307,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 20),
 
                         // My Account Section
-                        Text(
-                          'My Account',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
+                        Text('My Account', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 12),
                         Card(
                           elevation: 0,
                           child: Column(
                             children: [
                               ListTile(
-                                leading: Icon(
-                                  Icons.inventory_2_outlined,
-                                  color: AppColors.primary,
-                                ),
+                                leading: Icon(Icons.inventory_2_outlined, color: AppColors.primary),
                                 title: const Text('My Listings'),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () {
@@ -364,10 +323,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               const Divider(height: 1),
                               ListTile(
-                                leading: Icon(
-                                  Icons.message_outlined,
-                                  color: AppColors.secondary,
-                                ),
+                                leading: Icon(Icons.message_outlined, color: AppColors.secondary),
                                 title: const Text('Messages'),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () {
@@ -376,14 +332,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               const Divider(height: 1),
                               ListTile(
-                                leading: Icon(
-                                  Icons.favorite_border,
-                                  color: AppColors.primary,
-                                ),
+                                leading: Icon(Icons.favorite_border, color: AppColors.primary),
                                 title: const Text('Wishlist'),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () {
                                   Navigator.pushNamed(context, '/wishlist');
+                                },
+                              ),
+                              ListTile(
+                                leading: Icon(Icons.report_gmailerrorred, color: AppColors.primary),
+                                title: const Text('My Reports'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () async {
+                                  await Provider.of<ProductViewModel>(
+                                    context,
+                                    listen: false,
+                                  ).loadUserReports(viewModel.user?.uid ?? '');
+                                  Navigator.pushNamed(context, '/my-reports');
                                 },
                               ),
                             ],
@@ -392,20 +357,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 24),
 
                         // Support Section
-                        Text(
-                          'Support',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
+                        Text('Support', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 16),
                         Card(
                           elevation: 0,
                           child: Column(
                             children: [
                               ListTile(
-                                leading: Icon(
-                                  Icons.help_outline,
-                                  color: AppColors.tertiary,
-                                ),
+                                leading: Icon(Icons.help_outline, color: AppColors.tertiary),
                                 title: const Text('Help Center'),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () {
@@ -463,7 +422,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: ElevatedButton.icon(
                             icon: const Icon(Icons.admin_panel_settings),
                             label: const Text('Admin Dashboard'),
-                            onPressed: () {
+                            onPressed: () async {
+                              await Provider.of<ProductViewModel>(
+                                context,
+                                listen: false,
+                              ).loadAllReports();
+
                               Navigator.pushNamed(context, '/admin');
                             },
                             style: ElevatedButton.styleFrom(
@@ -477,9 +441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Center(
                           child: Text(
                             'Admin access for development purposes',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodySmall?.copyWith(
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Colors.grey,
                               fontStyle: FontStyle.italic,
                             ),
@@ -488,10 +450,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ),
-          bottomNavigationBar: BottomNavBar(
-            currentIndex: _currentIndex,
-            onTap: _onNavBarTap,
-          ),
+          bottomNavigationBar: BottomNavBar(currentIndex: _currentIndex, onTap: _onNavBarTap),
         );
       },
     );
