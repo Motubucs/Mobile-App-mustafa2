@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/product.dart';
 import '../viewmodels/wishlist_viewmodel.dart';
+import '../viewmodels/messages_viewmodel.dart';
+import '../views/messages/chat_screen.dart';
 import '../theme/app_colors.dart';
 
 class ProductCard extends StatelessWidget {
@@ -44,6 +46,106 @@ class ProductCard extends StatelessWidget {
     );
   }
 
+  void _startChatWithSeller(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      // Show sign-in prompt
+      showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Sign In Required'),
+          content: const Text('You need to sign in to message the seller.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                Navigator.pushNamed(context, '/sign-in');
+              },
+              child: const Text('Sign In'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Check if user is trying to message themselves
+    if (user.uid == product.sellerId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You cannot message yourself'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      final buyerId = user.uid;
+      final sellerId = product.sellerId;
+      final productId = product.id;
+      final messagesViewModel = Provider.of<MessagesViewModel>(context, listen: false);
+      
+      // Get or create conversation
+      final conversationId = await messagesViewModel.getOrCreateConversation(buyerId, sellerId, productId);
+      
+      // Get seller information
+      final seller = await messagesViewModel.getUserById(sellerId);
+      
+      // Close loading dialog
+      if (context.mounted) Navigator.pop(context);
+      
+      // Navigate to chat screen
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              conversationId: conversationId,
+              user: seller,
+              product: product,
+            ),
+          ),
+        );
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Chat opened with seller'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (context.mounted) Navigator.pop(context);
+      
+      // Show error message
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start chat: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final wishlistViewModel = Provider.of<WishlistViewModel>(context);
@@ -65,20 +167,6 @@ class ProductCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.grey.withOpacity(0.1),
-                width: 0.5,
-              ),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.grey.withOpacity(0.05),
-                  Colors.white,
-                  Colors.grey.withOpacity(0.05),
-                ],
-                stops: const [0.0, 0.5, 1.0],
-              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,6 +237,26 @@ class ProductCard extends StatelessWidget {
                                     isInWishlist
                                         ? AppColors.primary
                                         : Colors.grey.shade600,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (!isSelfPosted)
+                        Positioned(
+                          top: 8,
+                          right: 50, // Position to the left of wishlist button
+                          child: InkWell(
+                            onTap: () => _startChatWithSeller(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.8),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.message,
+                                color: AppColors.primary,
                                 size: 22,
                               ),
                             ),

@@ -3,6 +3,7 @@ import '../models/message.dart';
 import '../models/product.dart';
 import '../models/user.dart';
 import '../models/conversation.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 class MessagingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -12,8 +13,9 @@ class MessagingService {
   // Get conversations for a user
   Future<List<Conversation>> getConversations() async {
     try {
-      // TODO: Get current user ID from auth service
-      const currentUserId = 'current_user_id';
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser == null) throw Exception('User not authenticated');
+      final currentUserId = currentUser.uid;
 
       final snapshot =
           await _firestore
@@ -32,28 +34,49 @@ class MessagingService {
                     (id) => id != currentUserId,
                   )
                   as String;
-          final userDoc =
-              await _firestore.collection('users').doc(otherUserId).get();
-          final userData = userDoc.data()!;
+          
+          User? user;
+          try {
+            final userDoc = await _firestore.collection('users').doc(otherUserId).get();
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              user = User.fromMap(userData);
+            }
+          } catch (e) {
+            print('Failed to load user $otherUserId: $e');
+          }
 
           // Get the product data
-          final productDoc =
-              await _firestore
-                  .collection('products')
-                  .doc(data['productId'])
-                  .get();
-          final productData = productDoc.data()!;
+          Product? product;
+          try {
+            final productDoc = await _firestore
+                .collection('products')
+                .doc(data['productId'])
+                .get();
+            if (productDoc.exists) {
+              final productData = productDoc.data()!;
+              product = Product.fromMap(productDoc.id, productData);
+            }
+          } catch (e) {
+            print('Failed to load product ${data['productId']}: $e');
+          }
 
           return Conversation(
             id: doc.id,
-            user: User.fromMap(userData),
-            lastMessage: Message(
-              id: data['lastMessageId'] ?? '',
-              sender: data['lastMessageSender'] ?? '',
-              text: data['lastMessageText'] ?? '',
-              time: (data['lastMessageTime'] as Timestamp).toDate(),
-            ),
-            product: Product.fromMap(productDoc.id, productData),
+            buyerId: data['buyerId'] ?? '',
+            sellerId: data['sellerId'] ?? '',
+            productId: data['productId'] ?? '',
+            createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            user: user,
+            lastMessage: (data['lastMessageId'] != null && data['lastMessageSender'] != null && data['lastMessageText'] != null && data['lastMessageTime'] != null)
+              ? Message(
+                  id: data['lastMessageId'],
+                  sender: data['lastMessageSender'],
+                  text: data['lastMessageText'],
+                  time: (data['lastMessageTime'] as Timestamp).toDate(),
+                )
+              : null,
+            product: product,
           );
         }),
       );
@@ -90,8 +113,9 @@ class MessagingService {
   // Send a message
   Future<bool> sendMessage(String conversationId, String text) async {
     try {
-      // TODO: Get current user ID from auth service
-      const currentUserId = 'current_user_id';
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser == null) throw Exception('User not authenticated');
+      final currentUserId = currentUser.uid;
 
       final message = {
         'sender': currentUserId,
@@ -122,26 +146,79 @@ class MessagingService {
     }
   }
 
-  // Create a new conversation
-  Future<String> createConversation(String productId, String sellerId) async {
+  // Get or create a conversation between buyer and seller for a product
+  Future<String> getOrCreateConversation(String buyerId, String sellerId, String productId) async {
     try {
-      // TODO: Get current user ID from auth service
-      const currentUserId = 'current_user_id';
-
+      // Check if conversation exists
+      final query = await _firestore
+        .collection(_conversationsCollection)
+        .where('buyerId', isEqualTo: buyerId)
+        .where('sellerId', isEqualTo: sellerId)
+        .where('productId', isEqualTo: productId)
+        .limit(1)
+        .get();
+      if (query.docs.isNotEmpty) {
+        return query.docs.first.id;
+      }
+      // Create new conversation
       final conversation = {
-        'participants': [currentUserId, sellerId],
+        'buyerId': buyerId,
+        'sellerId': sellerId,
         'productId': productId,
+        'participants': [buyerId, sellerId],
         'createdAt': FieldValue.serverTimestamp(),
-        'lastMessageTime': FieldValue.serverTimestamp(),
       };
+      final docRef = await _firestore.collection(_conversationsCollection).add(conversation);
+      return docRef.id;
+    } catch (e) {
+      throw Exception('Failed to get or create conversation: $e');
+    }
+  }
 
-      final docRef = await _firestore
-          .collection(_conversationsCollection)
-          .add(conversation);
+  // Get user by ID
+  Future<User> getUserById(String userId) async {
+    final userDoc = await _firestore.collection('users').doc(userId).get();
+    if (!userDoc.exists) throw Exception('User not found');
+    return User.fromMap(userDoc.data()!);
+  }
 
+  // Update createConversation to use buyerId and sellerId
+  Future<String> createConversation(String buyerId, String sellerId, String productId) async {
+    try {
+      final conversation = {
+        'buyerId': buyerId,
+        'sellerId': sellerId,
+        'productId': productId,
+        'participants': [buyerId, sellerId],
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      final docRef = await _firestore.collection(_conversationsCollection).add(conversation);
       return docRef.id;
     } catch (e) {
       throw Exception('Failed to create conversation: $e');
+    }
+  }
+
+  // Convenience method to start a chat with a seller
+  Future<Map<String, dynamic>> startChatWithSeller(String buyerId, String sellerId, String productId) async {
+    try {
+      // Get or create conversation
+      final conversationId = await getOrCreateConversation(buyerId, sellerId, productId);
+      
+      // Get seller information
+      final seller = await getUserById(sellerId);
+      
+      // Get product information
+      final productDoc = await _firestore.collection('products').doc(productId).get();
+      final product = Product.fromMap(productDoc.id, productDoc.data()!);
+      
+      return {
+        'conversationId': conversationId,
+        'seller': seller,
+        'product': product,
+      };
+    } catch (e) {
+      throw Exception('Failed to start chat with seller: $e');
     }
   }
 }
