@@ -6,6 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../../viewmodels/profile_viewmodel.dart';
 import '../../models/user.dart' as app_models;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 
 class AppColors {
   static const Color primary = Color(0xFF6200EE);
@@ -33,17 +36,6 @@ final List<Map<String, String>> carouselItemsData = [
   {'name': 'Footwear', 'imageUrl': 'assets/images/sneaker.png'}, // Sneakers
 ];
 
-// Define gradient color combinations for animation
-final List<List<Color>> gradientColors = [
-  [const Color(0xFF667eea), const Color(0xFF764ba2)], // Purple to Purple
-  [const Color(0xFFf093fb), const Color(0xFFf5576c)], // Pink to Red
-  [const Color(0xFF4facfe), const Color(0xFF00f2fe)], // Blue to Cyan
-  [const Color(0xFF43e97b), const Color(0xFF38f9d7)], // Green to Teal
-  [const Color(0xFFfa709a), const Color(0xFFfee140)], // Pink to Yellow
-  [const Color(0xFFa8edea), const Color(0xFFfed6e3)], // Light Blue to Pink
-  [const Color(0xFFff9a9e), const Color(0xFFfecfef)], // Light Pink to Pink
-  [const Color(0xFFffecd2), const Color(0xFFfcb69f)], // Cream to Orange
-];
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -52,164 +44,41 @@ class SignInScreen extends StatefulWidget {
   _SignInScreenState createState() => _SignInScreenState();
 }
 
-class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMixin {
+class _SignInScreenState extends State<SignInScreen> {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     forceCodeForRefreshToken: true,
     signInOption: SignInOption.standard,
   );
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool _isLoading = false;
-  bool _isAutoLoginAttempted = false;
-  
-  // Animation controllers
-  late AnimationController _gradientController;
-  late AnimationController _rotationController;
-  late Animation<double> _gradientAnimation;
-  late Animation<double> _rotationAnimation;
-  
-  int _currentGradientIndex = 0;
-  int _nextGradientIndex = 1;
 
   @override
   void initState() {
     super.initState();
-    
-    // Initialize animation controllers
-    _gradientController = AnimationController(
-      duration: const Duration(seconds: 3),
-      vsync: this,
-    );
-    
-    _rotationController = AnimationController(
-      duration: const Duration(seconds: 20),
-      vsync: this,
-    );
-    
-    // Create animations
-    _gradientAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _gradientController,
-      curve: Curves.easeInOut,
-    ));
-    
-    _rotationAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _rotationController,
-      curve: Curves.linear,
-    ));
-    
-    // Start animations
-    _startGradientAnimation();
-    _rotationController.repeat();
-    
-    _attemptAutoLogin();
-  }
+    _ensureSignedOut();
 
-  void _startGradientAnimation() {
-    _gradientController.forward().then((_) {
-      if (mounted) {
-        setState(() {
-          _currentGradientIndex = _nextGradientIndex;
-          _nextGradientIndex = (_nextGradientIndex + 1) % gradientColors.length;
-        });
-        _gradientController.reset();
-        _startGradientAnimation();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _gradientController.dispose();
-    _rotationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _attemptAutoLogin() async {
-    if (_isAutoLoginAttempted) return;
-    
-    setState(() {
-      _isAutoLoginAttempted = true;
-      _isLoading = true;
-    });
-
-    try {
-      // Check if user is already signed in with Google
-      final bool isSignedIn = await _googleSignIn.isSignedIn();
-      
-      if (isSignedIn) {
-        // Try to get the last signed in account
-        final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
-        
-        if (googleUser != null) {
-          // User is already signed in, proceed with authentication
-          await _authenticateWithGoogle(googleUser);
-          return;
-        }
-      }
-      
-      // Check if Firebase user is already authenticated
-      if (_auth.currentUser != null) {
-        final app_models.User appUser = app_models.User.fromFirebaseUser(_auth.currentUser!);
-        final ProfileViewModel profileViewModel = Provider.of<ProfileViewModel>(
-          context,
-          listen: false,
-        );
-        profileViewModel.initializeWithUser(appUser);
-        
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-        return;
-      }
-    } catch (error) {
-      print("Auto-login error: $error");
-      // Continue to manual sign-in if auto-login fails
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    print("Carousel Items Data:");
+    for (var item in carouselItemsData) {
+      print("  - Name: ${item['name']}, Path: ${item['imageUrl']}");
     }
   }
 
-  Future<void> _authenticateWithGoogle(GoogleSignInAccount googleUser) async {
+  Future<void> _ensureSignedOut() async {
     try {
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      final User? firebaseUser = userCredential.user;
-
-      if (firebaseUser != null) {
-        final app_models.User appUser = app_models.User.fromFirebaseUser(firebaseUser);
-        final ProfileViewModel profileViewModel = Provider.of<ProfileViewModel>(
-          context,
-          listen: false,
-        );
-        profileViewModel.initializeWithUser(appUser);
-
-        print("Auto-signed in with Google: ${appUser.email}");
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
+      final bool isSignedIn = await _googleSignIn.isSignedIn();
+      if (_auth.currentUser != null || isSignedIn) {
+        await _auth.signOut();
+        await _googleSignIn.signOut();
+        if (isSignedIn) {
+          try {
+            await _googleSignIn.disconnect();
+          } catch (e) {
+            print("Non-critical disconnect error: $e");
+          }
         }
       }
-    } catch (error) {
-      print("Error during auto-authentication: $error");
-      // If auto-authentication fails, allow manual sign-in
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    } catch (e) {
+      print("Error ensuring signed out: $e");
     }
   }
 
@@ -219,6 +88,12 @@ class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMix
     });
 
     try {
+      try {
+        await _googleSignIn.signOut();
+      } catch (e) {
+        print("Non-critical error during pre-signin Google signOut: $e");
+      }
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
@@ -230,14 +105,37 @@ class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMix
         return;
       }
 
-      await _authenticateWithGoogle(googleUser);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Signed in successfully as ${googleUser.displayName}'),
-          ),
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
+      final User? firebaseUser = userCredential.user;
+
+      if (firebaseUser != null) {
+        await ensureUserProfile(firebaseUser);
+        final app_models.User appUser = app_models.User.fromFirebaseUser(
+          firebaseUser,
         );
+        final ProfileViewModel profileViewModel = Provider.of<ProfileViewModel>(
+          context,
+          listen: false,
+        );
+        profileViewModel.initializeWithUser(appUser);
+
+        print("Signing in with Google: ${appUser.email}");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Signed in successfully as ${appUser.name}'),
+            ),
+          );
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
     } catch (error) {
       print("Error signing in with Google: $error");
@@ -257,167 +155,129 @@ class _SignInScreenState extends State<SignInScreen> with TickerProviderStateMix
     }
   }
 
+  Future<void> ensureUserProfile(User firebaseUser) async {
+    final doc = FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid);
+    final exists = (await doc.get()).exists;
+    if (!exists) {
+      await doc.set({
+        'uid': firebaseUser.uid,
+        'name': firebaseUser.displayName ?? 'Unknown',
+        'email': firebaseUser.email ?? '',
+        'avatar': firebaseUser.photoURL ?? 'assets/images/default_avatar.png',
+        'joinedDate': DateFormat('MMMM yyyy').format(DateTime.now()),
+        'rating': 5.0,
+        'reviewCount': 0,
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AnimatedBuilder(
-        animation: Listenable.merge([_gradientAnimation, _rotationAnimation]),
-        builder: (context, child) {
-          return Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color.lerp(
-                    gradientColors[_currentGradientIndex][0],
-                    gradientColors[_nextGradientIndex][0],
-                    _gradientAnimation.value,
-                  )!,
-                  Color.lerp(
-                    gradientColors[_currentGradientIndex][1],
-                    gradientColors[_nextGradientIndex][1],
-                    _gradientAnimation.value,
-                  )!,
-                ],
-                stops: const [0.0, 1.0],
-                transform: GradientRotation(_rotationAnimation.value * 2 * 3.14159),
-              ),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent, // Or AppColors.background
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.admin_panel_settings,
+              color: AppColors.adminIconColor,
             ),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            onPressed: () {
+              Navigator.pushNamed(context, '/admin');
+            },
+            tooltip: 'Admin Dashboard (Dev Mode)',
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            children: <Widget>[
+              Expanded(
+                flex: 3,
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    // AppBar with transparent background
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.admin_panel_settings,
-                              color: Colors.white,
-                            ),
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/admin');
-                            },
-                            tooltip: 'Admin Dashboard (Dev Mode)',
-                          ),
-                        ],
+                    Image.asset(
+                      'assets/images/LogoImage.png',
+                      width: 120,
+                      height: 120,
+                    ),
+                    const SizedBox(height: 16),
+                    Image.asset('assets/images/LogoText.png', width: 220),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Buy and sell items within your campus community.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w400,
                       ),
-                    ),
-                    
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          // Logo with white background for better visibility
-                          Container(
-                            padding: const EdgeInsets.all(16.0),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.9),
-                              borderRadius: BorderRadius.circular(20.0),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                Image.asset(
-                                  'assets/images/LogoImage.png',
-                                  width: 120,
-                                  height: 120,
-                                ),
-                                const SizedBox(height: 16),
-                                Image.asset('assets/images/LogoText.png', width: 220),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Buy and sell items within your campus community.',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w400,
-                              shadows: [
-                                Shadow(
-                                  blurRadius: 2.0,
-                                  color: Colors.black.withOpacity(0.3),
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 80),
-
-                    _InfiniteItemsCarousel(
-                      items: carouselItemsData,
-                      height: 200,
-                    ),
-
-                    Expanded(
-                      flex: 2,
-                      child: Container(),
-                    ),
-
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 40.0, top: 20.0),
-                      child: _isLoading
-                          ? const CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            )
-                          : SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: _isLoading ? null : _signInWithGoogle,
-                                icon: Image.network(
-                                  'https://img.icons8.com/color/48/google-logo.png',
-                                  height: 26,
-                                  width: 26,
-                                ),
-                                label: const Text(
-                                  'Sign in with Google',
-                                  style: TextStyle(
-                                    color: AppColors.googleButtonText,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.googleButtonBackground,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                    horizontal: 24,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.0),
-                                    side: const BorderSide(
-                                      color: AppColors.googleButtonBorder,
-                                    ),
-                                  ),
-                                  elevation: 3,
-                                  shadowColor: Colors.black.withOpacity(0.2),
-                                ),
-                              ),
-                            ),
                     ),
                   ],
                 ),
               ),
-            ),
-          );
-        },
+                    const SizedBox(height: 80),
+
+              _InfiniteItemsCarousel(
+                items: carouselItemsData,
+                height: 200, // This height is for the carousel widget itself
+              ),
+
+              Expanded(
+                flex: 2,
+                child: Container(), // Spacer
+              ),
+
+              Padding(
+                padding: const EdgeInsets.only(bottom: 40.0, top: 20.0),
+                child:
+                    _isLoading
+                        ? const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppColors.primary,
+                          ),
+                        )
+                        : SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ? null : _signInWithGoogle,
+                            icon: Image.network(
+                              'https://img.icons8.com/color/48/google-logo.png',
+                              height: 26,
+                              width: 26,
+                            ),
+                            label: const Text(
+                              'Sign in with Google',
+                              style: TextStyle(
+                                color: AppColors.googleButtonText,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.googleButtonBackground,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                                horizontal: 24,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.0),
+                                side: const BorderSide(
+                                  color: AppColors.googleButtonBorder,
+                                ),
+                              ),
+                              elevation: 1,
+                            ),
+                          ),
+                        ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

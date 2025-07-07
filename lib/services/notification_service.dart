@@ -89,7 +89,7 @@ class NotificationService {
     }
   }
 
-  // Get unread notification count
+  // Get unread notification count (all types, including 'message')
   Future<int> getUnreadCount() async {
     try {
       final currentUser = _auth.currentUser;
@@ -103,6 +103,9 @@ class NotificationService {
               .where('isRead', isEqualTo: false)
               .get();
 
+      // Optionally, filter for 'message' and other types if needed
+      // final count = snapshot.docs.where((doc) => doc['type'] == 'message').length;
+      // return count;
       return snapshot.docs.length;
     } catch (e) {
       print('Error getting unread count: $e');
@@ -246,6 +249,54 @@ class NotificationService {
     } catch (e) {
       print('Error sending notifications: $e');
       print('Error stack trace: ${StackTrace.current}');
+    }
+  }
+
+  // Send a message notification to a user
+  Future<void> sendMessageNotification({
+    required String toUserId,
+    required String fromUserName,
+    required String productTitle,
+    required String conversationId,
+  }) async {
+    try {
+      final notificationData = {
+        'type': 'message',
+        'message': '$fromUserName sent you a message about "$productTitle"',
+        'conversationId': conversationId,
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      };
+      await _firestore
+          .collection(_collection)
+          .doc(toUserId)
+          .collection('items')
+          .add(notificationData);
+    } catch (e) {
+      print('Error sending message notification: $e');
+    }
+  }
+
+  // Mark all message notifications for a conversation as read
+  Future<void> markConversationNotificationsAsRead(String conversationId) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) return;
+      final batch = _firestore.batch();
+      final snapshot = await _firestore
+          .collection(_collection)
+          .doc(currentUser.uid)
+          .collection('items')
+          .where('conversationId', isEqualTo: conversationId)
+          .where('type', isEqualTo: 'message')
+          .where('isRead', isEqualTo: false)
+          .get();
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+      await batch.commit();
+    } catch (e) {
+      print('Error marking conversation notifications as read: $e');
     }
   }
 

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../models/message.dart';
 import '../../theme/app_colors.dart';
 import '../../models/product.dart';
 import '../../models/user.dart';
 import '../../viewmodels/messages_viewmodel.dart';
+import '../../services/notification_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -29,9 +31,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Load messages when screen is opened
+    // Mark notifications as read when screen is opened
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MessagesViewModel>().loadMessages(widget.conversationId);
+      NotificationService().markConversationNotificationsAsRead(widget.conversationId);
     });
   }
 
@@ -40,6 +42,17 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  ImageProvider _getImageProvider(String imageUrl) {
+    if (imageUrl.startsWith('http') || imageUrl.startsWith('https')) {
+      return NetworkImage(imageUrl);
+    } else if (imageUrl.startsWith('assets/')) {
+      return AssetImage(imageUrl);
+    } else {
+      // Fallback to placeholder image
+      return const AssetImage('assets/images/placeholder.png');
+    }
   }
 
   void _sendMessage() {
@@ -56,7 +69,12 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            CircleAvatar(backgroundImage: NetworkImage(widget.user.avatar)),
+            CircleAvatar(
+              backgroundImage: _getImageProvider(widget.user.avatar),
+              onBackgroundImageError: (exception, stackTrace) {
+                debugPrint('Failed to load user avatar: $exception');
+              },
+            ),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,11 +113,26 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    widget.product.image,
+                  child: Image(
+                    image: _getImageProvider(widget.product.image),
                     width: 50,
                     height: 50,
                     fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.grey[300],
+                        ),
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          size: 24,
+                          color: Colors.grey,
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -130,6 +163,15 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: Consumer<MessagesViewModel>(
               builder: (context, viewModel, child) {
+                // Check if messages are loaded for the current conversation
+                if (viewModel.currentConversationId != widget.conversationId) {
+                  // Load messages for this conversation
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    viewModel.loadMessages(widget.conversationId);
+                  });
+                  return const Center(child: CircularProgressIndicator());
+                }
+
                 if (viewModel.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
@@ -153,9 +195,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemCount: viewModel.messages.length,
                   itemBuilder: (context, index) {
                     final message = viewModel.messages[index];
-                    final isMe =
-                        message.sender ==
-                        'current_user_id'; // TODO: Get current user ID
+                    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+                    final isMe = currentUser != null && message.sender == currentUser.uid;
 
                     return Align(
                       alignment:
