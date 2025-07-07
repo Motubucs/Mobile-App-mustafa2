@@ -9,7 +9,7 @@ class User {
   final String bio;
   final String phone;
   final String joinedDate;
-  final double rating;
+  final dynamic rating;
   final int reviewCount;
   final bool isEmailVerified;
 
@@ -22,7 +22,7 @@ class User {
     this.bio = '',
     this.phone = '',
     this.joinedDate = '',
-    this.rating = 0.0,
+    this.rating,
     this.reviewCount = 0,
     this.isEmailVerified = false,
   });
@@ -54,7 +54,7 @@ class User {
       joinedDate: map['joinedDate'] as String,
       bio: map['bio'] as String,
       phone: map['phone'] as String,
-      rating: map['rating'] as double,
+      rating: double.tryParse(map['rating'].toString()) ?? 0.0,
       reviewCount: map['reviewCount'] as int,
     );
   }

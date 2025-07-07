@@ -2,11 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/message.dart';
 import '../models/conversation.dart';
 import '../services/messaging_service.dart';
-import '../services/notification_service.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import '../models/product.dart';
-import '../models/user.dart' as app_user;
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MessagesViewModel extends ChangeNotifier {
   final MessagingService _messagingService = MessagingService();
@@ -64,52 +59,9 @@ class MessagesViewModel extends ChangeNotifier {
     try {
       await _messagingService.sendMessage(conversationId, text);
       await loadMessages(conversationId); // Reload messages to show the new one
-
-      // --- Notification logic ---
-      // Fetch conversation details
-      final firestore = FirebaseFirestore.instance;
-      final conversationDoc = await firestore.collection('conversations').doc(conversationId).get();
-      if (!conversationDoc.exists) return;
-      final data = conversationDoc.data()!;
-      final buyerId = data['buyerId'] as String;
-      final sellerId = data['sellerId'] as String;
-      final productId = data['productId'] as String;
-      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
-      final senderId = currentUser.uid;
-      // Only notify if sender is the seller
-      if (senderId == sellerId) {
-        // Get buyer user info
-        final buyerDoc = await firestore.collection('users').doc(buyerId).get();
-        final buyer = app_user.User.fromMap(buyerDoc.data()!);
-        // Get seller user info
-        final sellerDoc = await firestore.collection('users').doc(sellerId).get();
-        final seller = app_user.User.fromMap(sellerDoc.data()!);
-        // Get product info
-        final productDoc = await firestore.collection('products').doc(productId).get();
-        final product = Product.fromMap(productDoc.id, productDoc.data()!);
-        // Send notification to buyer
-        await NotificationService().sendMessageNotification(
-          toUserId: buyerId,
-          fromUserName: seller.name,
-          productTitle: product.title,
-          conversationId: conversationId,
-        );
-      }
-      // --- End notification logic ---
     } catch (e) {
       _error = 'Failed to send message: ${e.toString()}';
       notifyListeners();
     }
-  }
-
-  // Get or create a conversation between buyer and seller for a product
-  Future<String> getOrCreateConversation(String buyerId, String sellerId, String productId) async {
-    return await _messagingService.getOrCreateConversation(buyerId, sellerId, productId);
-  }
-
-  // Get user by ID
-  Future<app_user.User> getUserById(String userId) async {
-    return await _messagingService.getUserById(userId);
   }
 }

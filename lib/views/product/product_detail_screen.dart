@@ -1,13 +1,14 @@
+import 'dart:developer';
+
+import 'package:CampusCart/models/report_model.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../models/product.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodels/product_viewmodel.dart';
 import '../../viewmodels/wishlist_viewmodel.dart';
-import '../../viewmodels/messages_viewmodel.dart';
-import '../messages/chat_screen.dart';
-import 'package:share_plus/share_plus.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final String productId;
@@ -20,28 +21,20 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _currentImageIndex = 0;
+  String? selectedPaymentMethod;
 
   @override
   void initState() {
     super.initState();
     // Fetch product details when the screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<ProductViewModel>(
-        context,
-        listen: false,
-      ).loadProduct(widget.productId);
+      Provider.of<ProductViewModel>(context, listen: false).loadProduct(widget.productId);
     });
   }
 
   void _toggleWishlist() async {
-    final productViewModel = Provider.of<ProductViewModel>(
-      context,
-      listen: false,
-    );
-    final wishlistViewModel = Provider.of<WishlistViewModel>(
-      context,
-      listen: false,
-    );
+    final productViewModel = Provider.of<ProductViewModel>(context, listen: false);
+    final wishlistViewModel = Provider.of<WishlistViewModel>(context, listen: false);
 
     if (productViewModel.product != null) {
       final product = productViewModel.product!;
@@ -55,9 +48,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              isInWishlist ? 'Removed from wishlist' : 'Added to wishlist',
-            ),
+            content: Text(isInWishlist ? 'Removed from wishlist' : 'Added to wishlist'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -66,166 +57,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _shareProduct() async {
-    final productViewModel = Provider.of<ProductViewModel>(
-      context,
-      listen: false,
-    );
+    final productViewModel = Provider.of<ProductViewModel>(context, listen: false);
     final success = await productViewModel.shareProduct();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(success
-            ? 'Product shared successfully'
-            : 'Failed to share product. Please try again.'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _reportListing() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Report Listing'),
-            content: const Text(
-              'Are you sure you want to report this listing?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Listing reported'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                },
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Report'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _startChatWithSeller() async {
-    final productViewModel = Provider.of<ProductViewModel>(context, listen: false);
-    final product = productViewModel.product;
-    
-    if (product == null) {
+    if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Product information not available'),
-          backgroundColor: Colors.red,
+          content: Text('Product shared successfully'),
           duration: Duration(seconds: 2),
         ),
       );
-      return;
-    }
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      // Show sign-in prompt
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Sign In Required'),
-          content: const Text('You need to sign in to message the seller.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/sign-in');
-              },
-              child: const Text('Sign In'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    // Check if user is trying to message themselves
-    //dd
-    if (user.uid == product.sellerId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You cannot message yourself'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    // Show loading indicator
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    try {
-      final buyerId = user.uid;
-      final sellerId = product.sellerId;
-      final productId = product.id;
-      final messagesViewModel = Provider.of<MessagesViewModel>(context, listen: false);
-      
-      // Get or create conversation
-      final conversationId = await messagesViewModel.getOrCreateConversation(buyerId, sellerId, productId);
-      
-      // Get seller information
-      final seller = await messagesViewModel.getUserById(sellerId);
-      
-      // Close loading dialog
-      if (mounted) Navigator.pop(context);
-      
-      // Navigate to chat screen
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              conversationId: conversationId,
-              user: seller,
-              product: product,
-            ),
-          ),
-        );
-        
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Chat opened with seller'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      // Close loading dialog
-      if (mounted) Navigator.pop(context);
-      
-      // Show error message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to start chat: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
     }
   }
 
@@ -234,9 +75,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return Consumer2<ProductViewModel, WishlistViewModel>(
       builder: (context, productViewModel, wishlistViewModel, child) {
         if (productViewModel.isLoading) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
         if (productViewModel.error.isNotEmpty) {
@@ -249,17 +88,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         if (productViewModel.product == null) {
           return Scaffold(
             appBar: AppBar(title: const Text('Product Not Found')),
-            body: const Center(
-              child: Text('The requested product could not be found'),
-            ),
+            body: const Center(child: Text('The requested product could not be found')),
           );
         }
 
         final product = productViewModel.product!;
         final isInWishlist = wishlistViewModel.isInWishlist(product.id);
         final currentUser = FirebaseAuth.instance.currentUser;
-        final isSelfPosted =
-            currentUser != null && product.sellerId == currentUser.uid;
+        final isSelfPosted = currentUser != null && product.sellerId == currentUser.uid;
 
         // Use actual product images
         final List<String> images = product.images;
@@ -276,19 +112,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ),
                   onPressed: _toggleWishlist,
                 ),
-              IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: _shareProduct,
-              ),
+              IconButton(icon: const Icon(Icons.share), onPressed: _shareProduct),
             ],
           ),
-          floatingActionButton: !isSelfPosted ? FloatingActionButton.extended(
-            onPressed: _startChatWithSeller,
-            icon: const Icon(Icons.message),
-            label: const Text('Message Seller'),
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-          ) : null,
           body: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -333,9 +159,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color:
-                                _currentImageIndex == index
-                                    ? AppColors.primary
-                                    : Colors.grey[300],
+                                _currentImageIndex == index ? AppColors.primary : Colors.grey[300],
                           ),
                         ),
                       ),
@@ -360,8 +184,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           ),
                           Text(
                             'RM ${product.price.toStringAsFixed(2)}',
-                            style: Theme.of(context).textTheme.displaySmall
-                                ?.copyWith(fontWeight: FontWeight.bold),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -373,28 +198,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         children: [
                           Chip(
                             label: Text(product.category),
-                            backgroundColor: AppColors.secondary.withOpacity(
-                              0.2,
-                            ),
+                            backgroundColor: AppColors.secondary.withOpacity(0.2),
                           ),
-                          Text(
-                            product.timeAgo,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
+                          Text(product.timeAgo, style: Theme.of(context).textTheme.bodySmall),
                         ],
                       ),
                       const SizedBox(height: 16),
 
                       // Description
-                      Text(
-                        'Description',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
+                      Text('Description', style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: 8),
-                      Text(
-                        product.description,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
+                      Text(product.description, style: Theme.of(context).textTheme.bodyMedium),
                       const SizedBox(height: 24),
 
                       // Seller Information
@@ -409,26 +223,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     CircleAvatar(
                                       radius: 24,
                                       backgroundImage:
-                                          product.seller!.avatar.startsWith(
-                                                'http',
-                                              )
-                                              ? NetworkImage(
-                                                product.seller!.avatar,
-                                              )
-                                              : AssetImage(
-                                                    product.seller!.avatar,
-                                                  )
-                                                  as ImageProvider,
+                                          product.seller!.avatar.startsWith('http')
+                                              ? NetworkImage(product.seller!.avatar)
+                                              : AssetImage(product.seller!.avatar) as ImageProvider,
                                     ),
                                     const SizedBox(width: 16),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
                                               StreamBuilder<DocumentSnapshot>(
                                                 stream:
@@ -437,29 +242,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                                         .doc(product.sellerId)
                                                         .snapshots(),
                                                 builder: (context, snapshot) {
-                                                  if (snapshot.hasData &&
-                                                      snapshot.data!.exists) {
+                                                  if (snapshot.hasData && snapshot.data!.exists) {
                                                     final userData =
                                                         snapshot.data!.data()
-                                                            as Map<
-                                                              String,
-                                                              dynamic
-                                                            >;
+                                                            as Map<String, dynamic>;
                                                     return Text(
-                                                      userData['name'] ??
-                                                          product.seller!.name,
+                                                      userData['name'] ?? product.seller!.name,
                                                       style:
-                                                          Theme.of(context)
-                                                              .textTheme
-                                                              .titleMedium,
+                                                          Theme.of(context).textTheme.titleMedium,
                                                     );
                                                   }
                                                   return Text(
                                                     product.seller!.name,
-                                                    style:
-                                                        Theme.of(
-                                                          context,
-                                                        ).textTheme.titleMedium,
+                                                    style: Theme.of(context).textTheme.titleMedium,
                                                   );
                                                 },
                                               ),
@@ -472,12 +267,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                                   ),
                                                   const SizedBox(width: 4),
                                                   Text(
-                                                    product.seller!.rating
-                                                        .toString(),
-                                                    style:
-                                                        Theme.of(
-                                                          context,
-                                                        ).textTheme.bodySmall,
+                                                    product.seller!.rating.toString(),
+                                                    style: Theme.of(context).textTheme.bodySmall,
                                                   ),
                                                 ],
                                               ),
@@ -485,10 +276,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                           ),
                                           Text(
                                             'Member since ${product.seller!.joinedDate}',
-                                            style:
-                                                Theme.of(
-                                                  context,
-                                                ).textTheme.bodySmall,
+                                            style: Theme.of(context).textTheme.bodySmall,
                                           ),
                                         ],
                                       ),
@@ -501,14 +289,175 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     if (!isSelfPosted)
                                       Expanded(
                                         child: ElevatedButton.icon(
-                                          onPressed: _startChatWithSeller,
-                                          icon: const Icon(Icons.chat),
-                                          label: const Text('Chat with Seller'),
+                                          onPressed: () {
+                                            Navigator.pushNamed(
+                                              context,
+                                              '/messages/${product.seller!.uid}',
+                                            );
+                                          },
+                                          icon: const Icon(Icons.message),
+                                          label: const Text('Contact Seller'),
+                                        ),
+                                      ),
+                                    const SizedBox(width: 8),
+                                    if (!isSelfPosted)
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: () async {
+                                            showModalBottomSheet<void>(
+                                              context: context,
+                                              builder: (BuildContext ctx) {
+                                                return StatefulBuilder(
+                                                  builder: (
+                                                    BuildContext context,
+                                                    StateSetter setModalState,
+                                                  ) {
+                                                    return Padding(
+                                                      padding: const EdgeInsets.all(12.0),
+                                                      child: SizedBox(
+                                                        height: 350,
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment.start,
+                                                          children: [
+                                                            const Text(
+                                                              'Confirm Buying?',
+                                                              style: TextStyle(
+                                                                fontSize: 18.0,
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                            ),
+                                                            const Text(
+                                                              'Once you confirm buying, one unit will be booked for you.',
+                                                            ),
+                                                            Row(
+                                                              children: [
+                                                                Radio<String>(
+                                                                  value: 'cod',
+                                                                  groupValue: selectedPaymentMethod,
+                                                                  onChanged: (val) {
+                                                                    setModalState(() {
+                                                                      selectedPaymentMethod = val;
+                                                                    });
+                                                                  },
+                                                                ),
+                                                                const Text(
+                                                                  'Cash on Delivery (COD)',
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            Row(
+                                                              children: [
+                                                                Radio<String>(
+                                                                  value: 'qr',
+                                                                  groupValue: selectedPaymentMethod,
+                                                                  onChanged: (val) {
+                                                                    setModalState(() {
+                                                                      selectedPaymentMethod = val;
+                                                                    });
+                                                                  },
+                                                                ),
+                                                                const Text('QR'),
+                                                              ],
+                                                            ),
+                                                            if (selectedPaymentMethod == 'qr')
+                                                              Padding(
+                                                                padding: const EdgeInsets.only(
+                                                                  left: 20.0,
+                                                                ),
+                                                                child: Image.asset(
+                                                                  'assets/images/qr_scan.png',
+                                                                  height: 150,
+                                                                  width: 150,
+                                                                ),
+                                                              ),
+                                                            const SizedBox(height: 10.0),
+                                                            ElevatedButton(
+                                                              onPressed:
+                                                                  selectedPaymentMethod != null
+                                                                      ? () async {
+                                                                        await Provider.of<
+                                                                          ProductViewModel
+                                                                        >(
+                                                                          context,
+                                                                          listen: false,
+                                                                        ).confirmBuying(
+                                                                          paymentType:
+                                                                              selectedPaymentMethod ??
+                                                                              "",
+                                                                          sellerId:
+                                                                              product.seller?.uid ??
+                                                                              "",
+                                                                        );
+                                                                        Navigator.pop(context);
+                                                                      }
+                                                                      : null,
+                                                              style: TextButton.styleFrom(
+                                                                backgroundColor: Colors.blue,
+                                                                foregroundColor: Colors.white,
+                                                              ),
+                                                              child: const Text('Confirm'),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                                );
+                                              },
+                                            );
+                                          },
+                                          icon: Icon(Icons.shopping_bag_outlined),
+                                          label: const Text('Buy Now'),
                                         ),
                                       ),
                                     if (!isSelfPosted) const SizedBox(width: 8),
                                     IconButton(
-                                      onPressed: _reportListing,
+                                      onPressed: () async {
+                                        showDialog(
+                                          context: context,
+                                          builder:
+                                              (context) => AlertDialog(
+                                                title: const Text('Report Listing'),
+                                                content: const Text(
+                                                  'Are you sure you want to report this listing?',
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(context),
+                                                    child: const Text('Cancel'),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () async {
+                                                      await Provider.of<ProductViewModel>(
+                                                        context,
+                                                        listen: false,
+                                                      ).reportForAListingNow(
+                                                        ReportModel(
+                                                          comments: "comments",
+                                                          productId: product.id,
+                                                          productTitle: product.title,
+                                                          reason: "may be fake",
+                                                          sellerId: product.seller?.uid,
+                                                        ),
+                                                      );
+                                                      Navigator.pop(context);
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        const SnackBar(
+                                                          content: Text('Listing reported'),
+                                                          duration: Duration(seconds: 2),
+                                                        ),
+                                                      );
+                                                    },
+                                                    style: TextButton.styleFrom(
+                                                      foregroundColor: Colors.red,
+                                                    ),
+                                                    child: const Text('Report'),
+                                                  ),
+                                                ],
+                                              ),
+                                        );
+                                      },
                                       icon: const Icon(Icons.flag_outlined),
                                     ),
                                   ],
